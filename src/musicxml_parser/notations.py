@@ -2,7 +2,7 @@ from fractions import Fraction
 import xml.etree.ElementTree as ET
 import zipfile
 from .exception import UnpitchedNoteException, PitchStepParseException
-
+from .technical import Technical
 
 class Notations(object):
   """Internal representation of a MusicXML Note's Notations properties.
@@ -47,6 +47,7 @@ class Notations(object):
     self.is_slur_stop = False
     self.is_slur_continue = False
     self.is_slash = False
+    self.technical = Technical()
 
   def parse_notations(self, xml_notations):
     """Parse the MusicXML <Notations> element."""
@@ -71,6 +72,8 @@ class Notations(object):
           self._parse_ornaments(child)
         elif child.tag == 'slur':
           self._parse_slur(child)
+        elif child.tag == 'technical':
+          self.technical.parse_technical(child)
 
   def _parse_articulations(self, xml_articulation):
     """Parse the MusicXML <Articulations> element.
