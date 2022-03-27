@@ -142,5 +142,6 @@ class Slur:
     self.xml_position = 0
     self.end_xml_position = 0
     self.index = 0
-    self.voice = 0
+    self.voice_start = 0
+    self.voice_stop = 0
 

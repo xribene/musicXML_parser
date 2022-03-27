@@ -311,8 +311,60 @@ def omit_trill_notes(notes):
 
     return notes
 
-
 def extract_and_apply_slurs(notes):
+    startSlurs = []
+    stopSlurs = []
+    for note in notes:
+        slurs = note.note_notations.slurs
+        if slurs:
+            for slur in slurs:
+                if slur.type == 'start':
+                    slur.voice_start = note.voice
+                    slur.xml_position = note.note_duration.xml_position
+                    note.note_notations.is_slur_start = True
+                    startSlurs.append(slur)
+                elif slur.type == 'stop':
+                    slur.voice_stop = note.voice
+                    slur.end_xml_position = note.note_duration.xml_position
+                    note.note_notations.is_slur_stop = True
+                    stopSlurs.append(slur)
+    assert(len(startSlurs) == len(stopSlurs))
+    # ensure slurs are sorted
+    startSlurs.sort(key=lambda x: (x.xml_position))
+    stopSlurs.sort(key=lambda x: (x.end_xml_position))
+    stopSlurNumbers = [int(slur.number) for slur in stopSlurs]
+    combinedSlurs = []
+    for i, startSlur in enumerate(startSlurs):
+        number = int(startSlur.number)
+        # find the corresponding stop slur
+        # it's the one with the same number and the smallest end_xml_position
+        ind = stopSlurNumbers.index(number)
+        print(ind)
+        slur = stopSlurs.pop(ind)
+        stopSlurNumbers.pop(ind)
+        slur.voice_start = startSlur.voice_start
+        slur.xml_position = startSlur.xml_position
+        slur.index = i
+        startSlur.voice_stop = slur.voice_stop
+        startSlur.index = i
+        startSlur.end_xml_position = slur.end_xml_position
+        combinedSlurs.append(slur)
+        
+    for note in notes:
+        slurs = note.note_notations.slurs
+        note_position = note.note_duration.xml_position
+        if not slurs:
+            for slur in combinedSlurs:
+                if note.voice in [slur.voice_start, slur.voice_stop] and slur.xml_position <= note_position <= slur.end_xml_position:
+                    note.note_notations.slurs.append(slur)
+                    if slur.xml_position == note_position:
+                        note.note_notations.is_slur_start = True
+                    elif slur.end_xml_position == note_position:
+                        note.note_notations.is_slur_stop = True
+                    else:
+                        note.note_notations.is_slur_continue = True   
+    return notes
+def extract_and_apply_slurs2(notes):
     resolved_slurs = []
     unresolved_slurs = []
     slur_index = 0
