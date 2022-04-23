@@ -339,7 +339,7 @@ def extract_and_apply_slurs(notes):
         # find the corresponding stop slur
         # it's the one with the same number and the smallest end_xml_position
         ind = stopSlurNumbers.index(number)
-        print(ind)
+        # print(ind)
         slur = stopSlurs.pop(ind)
         stopSlurNumbers.pop(ind)
         slur.voice_start = startSlur.voice_start
