@@ -8,12 +8,15 @@ from .key_signature import KeySignature
 from .exception import MultipleTimeSignatureException
 from .note import Note
 from .direction import Direction
-
+from xml.etree import ElementTree as ET
+import copy
+from pdb import set_trace as st
+import random
 
 class Measure(object):
   """Internal represention of the MusicXML <measure> element."""
 
-  def __init__(self, xml_measure, state):
+  def __init__(self, xml_measure, state, predictions = None, guitarPart = None):
     self.xml_measure = xml_measure
     self.notes = []
     self.directions = []
@@ -39,14 +42,109 @@ class Measure(object):
     # can be inserted at the beginning of the measure
     self.start_time_position = self.state.time_position
     self.start_xml_position = self.state.xml_position
-    self._parse()
+
+    measureNumber = self.xml_measure.attrib['number']
+    width = self.xml_measure.attrib['width']
+    self.predictions = predictions
+    self.guitarPart = guitarPart
+    # print(self.guitarPart)
+    if self.guitarPart is not None:
+      # print('measa')
+      self.guitarMeasure = ET.fromstring(f'''\n    <measure number="{measureNumber}" width="{width}">\n    </measure>''')
+      # print(f'''<measure number="{measureNumber}" width="{width}"></measure>''')
+      self._parse2()
+      
+    else:
+      self._parse()
     # Update the time signature if a partial or pickup measure
     # self._fix_time_signature()
 
+  def _parse2(self):
+    """Parse the <measure> element."""
+    # Create new direction
+    # direction = []
+    
+    if 'implicit' in self.xml_measure.attrib.keys():
+      self.implicit = self.xml_measure.attrib['implicit']
+    for child in self.xml_measure:
+
+      if child.tag == 'attributes':
+        self._parse_attributes(child)
+      elif child.tag == 'backup':
+        self._parse_backup(child)
+        self.guitarMeasure.append(child)
+      elif child.tag == 'barline':
+        self._parse_barline(child)
+        self.guitarMeasure.append(child)
+      elif child.tag == 'direction':
+        # Get tempo in <sound /> and update state tempo and time_position
+        self._parse_direction(child)
+        direction = Direction(child, self.state)
+        self.directions.append(direction)
+        self.guitarMeasure.append(child)
+        # self.state.previous_direction = direction
+      elif child.tag == 'forward':
+        self._parse_forward(child)
+        self.guitarMeasure.append(child)
+      elif child.tag == 'harmony':
+        chord_symbol = ChordSymbol(child, self.state)
+        self.chord_symbols.append(chord_symbol)
+      elif child.tag == 'note':
+        note = Note(child, self.state)
+        self.notes.append(note)
+        # Keep track of current note as previous note for chord timings
+        self.state.previous_note_duration = note.note_duration.duration
+        self.state.previous_note_time_position = note.note_duration.time_position
+        self.state.previous_note_xml_position = note.note_duration.xml_position
+
+        # Sum up the MusicXML durations in voice 1 of this measure
+        if note.voice == 1 and not note.is_in_chord:
+          self.duration += note.note_duration.duration
+
+        # create the guitar note
+        if note.note_duration.is_grace_note is True:
+          pass
+        else:
+          
+          # childCopy = copy.deepcopy(child)
+          childCopy = ET.Element('note')
+          
+          # get a single random bernulli trial
+          if child.find('rest') is None:
+            self.state.note_count += 1
+            # use the note_count and the name of the note to create the id of the note
+            # also this note_count now matches with the indeces (range) of the predictions
+
+            if random.random() < 0.5:
+              # it's decided to ignore this note, so we replace it with a rest
+              childCopy.insert(0, ET.Element('rest'))
+              for noteElement in child:
+                # delete the stem and pitch elements
+                if noteElement.tag not in ['stem', 'pitch']:
+                  childCopy.append(copy.deepcopy(noteElement))
+              
+            else:
+              # for noteElement in child:
+              #   childCopy.append(copy.deepcopy(noteElement))
+              childCopy = copy.deepcopy(child)
+              child.set('color', 'green')
+          else:
+            childCopy = copy.deepcopy(child)
+            
+          # st()
+          childCopy.find('staff').text = '1'
+
+          self.guitarMeasure.append(childCopy)
+      else:
+        # Ignore other tag types because they are not relevant.
+        pass
+
+    self.guitarPart.append(self.guitarMeasure)
   def _parse(self):
     """Parse the <measure> element."""
     # Create new direction
     # direction = []
+    
     if 'implicit' in self.xml_measure.attrib.keys():
       self.implicit = self.xml_measure.attrib['implicit']
     for child in self.xml_measure:

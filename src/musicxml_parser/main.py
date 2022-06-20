@@ -81,6 +81,9 @@ class MusicXMLParserState(object):
     # Keep track of measure number
     self.measure_number = 0
 
+    # Keep track of number of notes
+    self.note_count = 0
+
     # Keep track of unsolved ending bracket
     self.first_ending_discontinue = False
 
@@ -88,8 +91,6 @@ class MusicXMLParserState(object):
     self.is_beam_start = False
     self.is_beam_continue = False
     self.is_beam_stop = False
-
-
 
 class MusicXMLDocument(object):
   """Internal representation of a MusicXML Document.
@@ -654,3 +655,64 @@ class MusicXMLDocument(object):
                     return midpoint
             return midpoint
     return last
+
+class ReductedMusicXMLDocument(MusicXMLDocument):
+
+  def __init__(self, originalFilename, predictions = None, expandRepeats = True):
+    self._score = self._get_score(originalFilename)
+    self.parts = []
+    # ScoreParts indexed by id.
+    self._score_parts = {}
+    self.midi_resolution = constants.STANDARD_PPQ
+    self._state = MusicXMLParserState()
+    self.predictions = predictions
+    # Total time in seconds
+    self.total_time_secs = 0
+    self.total_time_duration = 0
+    self.expandRepeats = expandRepeats
+    self._parse()
+    self._recalculate_time_position()
+
+  def _parse(self):
+    """Parse the uncompressed MusicXML document."""
+    # Parse part-list
+    xml_part_list = self._score.find('part-list')
+    if xml_part_list is not None:
+      for element in xml_part_list:
+        if element.tag == 'score-part':
+          score_part = ScorePart(element)
+          self._score_parts[score_part.id] = score_part
+    
+    # append a new score-part element to part-list
+    # this element is the reducted guitar part
+    guitarScorePart = ET.fromstring(f'''<score-part id="G1">
+                          <part-name print-object="yes">Guitar Reduction</part-name>
+                          <score-instrument id="G1-I2">
+                            <instrument-name></instrument-name>
+                            </score-instrument>
+                          <midi-device id="G1-I2" port="1"></midi-device>
+                          <midi-instrument id="G1-I2">
+                            <midi-channel>1</midi-channel>
+                            <midi-program>1</midi-program>
+                            <volume>78.7402</volume>
+                            <pan>0</pan>
+                            </midi-instrument>
+                          </score-part>''')
+    xml_part_list.append(guitarScorePart)
+
+    # now we create an empty part at the end of the score (or end of the part-wise element of the score)
+    guitarPart = ET.fromstring('''<part id="G1"></part>''')
+    
+
+    # Parse parts
+    for score_part_index, child in enumerate(self._score.findall('part')):
+      part = Part(child, self._score_parts, self._state, guitarPart, self.predictions, self.expandRepeats )
+      self.parts.append(part)
+      score_part_index += 1
+      if self._state.time_position > self.total_time_secs:
+        self.total_time_secs = self._state.time_position
+      if self._state.xml_position > self.total_time_duration:
+        self.total_time_duration = self._state.xml_position
+
+    # now we add the guitar part at the end of the score (or end of the part-wise element of the score)
+    self._score.append(guitarPart)

@@ -8,11 +8,14 @@ import copy
 class Part(object):
   """Internal represention of a MusicXML <part> element."""
 
-  def __init__(self, xml_part, score_parts, state):
+  def __init__(self, xml_part, score_parts, state, guitarPart = None, predictions = None, expandRepeats = True):
     self.id = ''
     self.score_part = None
     self.measures = []
     self._state = state
+    self.predictions = predictions
+    self.guitarPart = guitarPart
+    self.expandRepeats = expandRepeats
     self._parse(xml_part, score_parts)
 
   def _parse(self, xml_part, score_parts):
@@ -49,39 +52,44 @@ class Part(object):
       self._repair_empty_measure(measure)
       self._state.measure_number = current_measure_number
       old_state = copy.copy(self._state)
-      parsed_measure = Measure(measure, self._state)
+      parsed_measure = Measure(measure, self._state, self.predictions, self.guitarPart)
 
-      if parsed_measure.first_ending_start:
-        if current_measure_number in resolved_first_ending:
-          ending_index = resolved_first_ending.index(current_measure_number)
-          current_measure_number = end_measure_of_first_ending[ending_index] + 1
-          self._state = old_state
-          continue
-        else:
-          resolved_first_ending.append(current_measure_number)
+      if self.expandRepeats:
+        if parsed_measure.first_ending_start:
+          if current_measure_number in resolved_first_ending:
+            ending_index = resolved_first_ending.index(current_measure_number)
+            current_measure_number = end_measure_of_first_ending[ending_index] + 1
+            self._state = old_state
+            continue
+          else:
+            resolved_first_ending.append(current_measure_number)
 
       self.measures.append(parsed_measure)
+      # self.guitarPart.append(measure)
 
-      if parsed_measure.first_ending_stop:
-        end_measure_of_first_ending.append(current_measure_number)
-
-      if parsed_measure.repeat == 'start':
-        previous_forward_repeats.append(current_measure_number)
-        current_measure_number += 1
-      elif parsed_measure.repeat == 'jump' and current_measure_number not in resolved_repeats:
-        resolved_repeats.append(current_measure_number)
-        if len(resolved_first_ending) != len(end_measure_of_first_ending):
+      if self.expandRepeats:
+        if parsed_measure.first_ending_stop:
           end_measure_of_first_ending.append(current_measure_number)
-        if len(previous_forward_repeats) == 0:
+
+        if parsed_measure.repeat == 'start':
+          previous_forward_repeats.append(current_measure_number)
+          current_measure_number += 1
+        elif parsed_measure.repeat == 'jump' and current_measure_number not in resolved_repeats:
+          resolved_repeats.append(current_measure_number)
+          if len(resolved_first_ending) != len(end_measure_of_first_ending):
+            end_measure_of_first_ending.append(current_measure_number)
+          if len(previous_forward_repeats) == 0:
+            current_measure_number = 0
+          else:
+            current_measure_number = previous_forward_repeats[-1]
+            del previous_forward_repeats[-1]
+        elif parsed_measure.dacapo == 'jump':
           current_measure_number = 0
+          fine_activated = True
+        elif parsed_measure.fine and fine_activated:
+          break
         else:
-          current_measure_number = previous_forward_repeats[-1]
-          del previous_forward_repeats[-1]
-      elif parsed_measure.dacapo == 'jump':
-        current_measure_number = 0
-        fine_activated = True
-      elif parsed_measure.fine and fine_activated:
-        break
+          current_measure_number += 1
       else:
         current_measure_number += 1
 
