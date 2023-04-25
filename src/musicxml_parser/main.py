@@ -579,7 +579,7 @@ class MusicXMLDocument(object):
       num_beat_in_measure = int(corresp_time_sig.numerator * 16 / (corresp_time_sig.denominator * interval_in_16th))
       if num_beat_in_measure == 0:
         raise Exception(f'measure is longer than a interval: {corresp_time_sig.numerator} / {corresp_time_sig.denominator}')
-      inter_beat_interval = corresp_time_sig.state.divisions * interval_in_16th / 4 
+      inter_beat_interval = corresp_time_sig.state.divisions * interval_in_16th / 4
 
       full_measure_length = corresp_time_sig.state.divisions * corresp_time_sig.numerator / corresp_time_sig.denominator * 4
       if i < num_measure - 1:
@@ -657,7 +657,18 @@ class MusicXMLDocument(object):
     return last
 
 class ReductedMusicXMLDocument(MusicXMLDocument):
+  '''
+  Creates a new xml score that has the same parts as the original + a new part for the reduction result
+  It expects the predictions from the RL agent as input.
+  It keeps the same order of notes as the parser that originally created the data-sample-score, meaning
+  that the predictions order, should be the same as the order of the notes that will be visited
+  by this _parse() operation.
 
+  While this class parses each of the notes of the oriinal score, it looks into the predictions to see
+  if the note should be kept or not. If the note should be kept, it is added to the new guitar part,
+  otherwise it is ignored. At the same time, the color of the "chosen" notes is changed to green
+  in the original parts of the score.
+  '''
   def __init__(self, originalFilename, predictions = None, expandRepeats = True):
     self._score = self._get_score(originalFilename)
     self.parts = []
@@ -682,30 +693,38 @@ class ReductedMusicXMLDocument(MusicXMLDocument):
         if element.tag == 'score-part':
           score_part = ScorePart(element)
           self._score_parts[score_part.id] = score_part
-    
+
     # append a new score-part element to part-list
     # this element is the reducted guitar part
-    guitarScorePart = ET.fromstring(f'''<score-part id="G1">
-                          <part-name print-object="yes">Guitar Reduction</part-name>
-                          <score-instrument id="G1-I2">
-                            <instrument-name></instrument-name>
-                            </score-instrument>
-                          <midi-device id="G1-I2" port="1"></midi-device>
-                          <midi-instrument id="G1-I2">
-                            <midi-channel>1</midi-channel>
-                            <midi-program>1</midi-program>
-                            <volume>78.7402</volume>
-                            <pan>0</pan>
-                            </midi-instrument>
-                          </score-part>''')
+    guitarScorePart = ET.fromstring(
+      f'''<score-part id="G1">
+      <part-name print-object="yes">Guitar Reduction</part-name>
+      <score-instrument id="G1-I2">
+        <instrument-name>Guitar</instrument-name>
+        </score-instrument>
+      <midi-device id="G1-I2" port="1"></midi-device>
+      <midi-instrument id="G1-I2">
+        <midi-channel>1</midi-channel>
+        <midi-program>1</midi-program>
+        <volume>78.7402</volume>
+        <pan>0</pan>
+        </midi-instrument>
+    </score-part>
+      ''')
+
+
     xml_part_list.append(guitarScorePart)
 
     # now we create an empty part at the end of the score (or end of the part-wise element of the score)
-    guitarPart = ET.fromstring('''<part id="G1"></part>''')
-    
+    guitarPart = ET.fromstring(
+      f'''<part id="G1">
+      </part>
+      ''')
+
 
     # Parse parts
     for score_part_index, child in enumerate(self._score.findall('part')):
+      # Each of the original parts needs to get a copy of the guitar part so it can add the notes that are kept in the reduction
       part = Part(child, self._score_parts, self._state, guitarPart, self.predictions, self.expandRepeats )
       self.parts.append(part)
       score_part_index += 1

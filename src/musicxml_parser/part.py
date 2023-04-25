@@ -16,6 +16,7 @@ class Part(object):
     self.predictions = predictions
     self.guitarPart = guitarPart
     self.expandRepeats = expandRepeats
+    self.firstMeasureFlag = True
     self._parse(xml_part, score_parts)
 
   def _parse(self, xml_part, score_parts):
@@ -52,8 +53,8 @@ class Part(object):
       self._repair_empty_measure(measure)
       self._state.measure_number = current_measure_number
       old_state = copy.copy(self._state)
-      parsed_measure = Measure(measure, self._state, self.predictions, self.guitarPart)
-
+      parsed_measure = Measure(measure, self._state, self.predictions, self.guitarPart, isFirst = self.firstMeasureFlag)
+      self.firstMeasureFlag = False
       if self.expandRepeats:
         if parsed_measure.first_ending_start:
           if current_measure_number in resolved_first_ending:
