@@ -671,6 +671,7 @@ class ReductedMusicXMLDocument(MusicXMLDocument):
   '''
   def __init__(self, originalFilename, predictions = None, expandRepeats = True):
     self._score = self._get_score(originalFilename)
+    self.noteCounter = 0
     self.parts = []
     # ScoreParts indexed by id.
     self._score_parts = {}
@@ -725,7 +726,8 @@ class ReductedMusicXMLDocument(MusicXMLDocument):
     # Parse parts
     for score_part_index, child in enumerate(self._score.findall('part')):
       # Each of the original parts needs to get a copy of the guitar part so it can add the notes that are kept in the reduction
-      part = Part(child, self._score_parts, self._state, guitarPart, self.predictions, self.expandRepeats )
+      part = Part(child, self._score_parts, self._state, guitarPart, self.predictions, self.expandRepeats, self.noteCounter )
+      self.noteCounter = part.noteCounter
       self.parts.append(part)
       score_part_index += 1
       if self._state.time_position > self.total_time_secs:

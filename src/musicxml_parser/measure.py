@@ -16,7 +16,9 @@ import random
 class Measure(object):
   """Internal represention of the MusicXML <measure> element."""
 
-  def __init__(self, xml_measure, state, predictions = None, guitarPart = None, isFirst = False):
+  def __init__(self, xml_measure, state, predictions = None, 
+               guitarPart = None, isFirst = False,
+               noteCounter=0):
     self.xml_measure = xml_measure
     self.notes = []
     self.directions = []
@@ -33,6 +35,7 @@ class Measure(object):
     self.first_ending_start = False  # 1 or 2 or None
     self.first_ending_stop = False  # 'start' or 'end' or None
     self.isFirstMeasure = isFirst
+    self.noteCounter=noteCounter
 
     # Cumulative duration in MusicXML duration.
     # Used for time signature calculations
@@ -116,25 +119,41 @@ class Measure(object):
           childCopy = ET.Element('note')
 
           # get a single random bernulli trial
+          # st()
           if child.find('rest') is None:
             self.state.note_count += 1
+            self.noteCounter += 1
+            assert self.state.note_count == self.noteCounter
+            prediction = None
+            if str(self.noteCounter-1) in self.predictions.keys():
+              prediction = self.predictions[str(self.noteCounter-1)]
+            else:
+              # print("no prediction for note ", self.noteCounter-1)
+              child.set('color', 'red')
             # use the note_count and the name of the note to create the id of the note
             # also this note_count now matches with the indeces (range) of the predictions
+            if prediction:
+              if prediction[0] == 0:
+                # it's decided to ignore this note, so we replace it with a rest
+                childCopy.insert(0, ET.Element('rest'))
+                for noteElement in child:
+                  # delete the stem and pitch elements
+                  if noteElement.tag not in ['stem', 'pitch']:
+                    childCopy.append(copy.deepcopy(noteElement))
 
-            if random.random() < 0.2:
-              # it's decided to ignore this note, so we replace it with a rest
+              else:
+                # if the note is "KEEP"
+                # TODO: even if the note is "KEEP", the octave might be different.
+                # from predictions, take the midi note and convert it to pitch and octave
+                childCopy = copy.deepcopy(child)
+                child.set('color', 'green')
+            else:
               childCopy.insert(0, ET.Element('rest'))
               for noteElement in child:
-                # delete the stem and pitch elements
-                if noteElement.tag not in ['stem', 'pitch']:
-                  childCopy.append(copy.deepcopy(noteElement))
-
-            else:
-              # if the note is "KEEP"
-              # TODO: even if the note is "KEEP", the octave might be different.
-              # from predictions, take the midi note and convert it to pitch and octave
-              childCopy = copy.deepcopy(child)
-              child.set('color', 'green')
+                  # delete the stem and pitch elements
+                  if noteElement.tag not in ['stem', 'pitch']:
+                    childCopy.append(copy.deepcopy(noteElement))
+                
           else:
             # for rests, our RL agent doesn't make any decisions.
             childCopy = copy.deepcopy(child)
@@ -147,39 +166,61 @@ class Measure(object):
 
           self.guitarMeasure.append(childCopy)
 
-          tabChildCopy = copy.deepcopy(childCopy)
-          tabChildCopy.find('staff').text = '2'
-          tabChildCopy.find('voice').text = str(int(childCopy.find('voice').text) + 4)
+          # tabChildCopy = copy.deepcopy(childCopy)
+          # tabChildCopy.find('staff').text = '2'
+          # tabChildCopy.find('voice').text = str(int(childCopy.find('voice').text) + 10)
 
-          if child.find('rest') is None:
-            technicalNotation = ET.fromstring(
-              f'''<technical>
-                <string>5</string>
-                <fret>3</fret>
-              </technical>
-              '''
-            )
-            # first check if the note has already a notation
-            # if it has, append the technicalNotation
-            # if not, first create it ET.Element('notation')
-            if child.find('notation'):
-              pass
+          if childCopy.find('rest') is None:
+            if prediction:
+              string = prediction[1] # 0 - Mi 6th, 1 - La 5th, 2 - Re 4th, 3 - Sol 3rd, 4 - Si 2nd, 5 - Mi 1st
+              fret = prediction[2]
+              step = prediction[4][:-1]
+              octave = prediction[4][-1]
+              # print(f"{self.noteCounter} - {step}{octave} - {6-string} - {fret}")
+              stepBefore = childCopy.find('pitch').find('step').text
+              childCopy.find('pitch').find('step').text = step
+              stepAfter = childCopy.find('pitch').find('step').text
+              stepInPredictions = prediction[4][:-1]
+              # print all steps
+              print(f"stepBefore: {stepBefore} - stepAfter: {stepAfter} - stepInPredictions: {stepInPredictions}")
+              # childCopy.find('pitch').find('octave').text = octave
+              technicalNotation = ET.fromstring(
+                f'''<technical>
+                  <string>{6 - string}</string>
+                  <fret>{fret}</fret>
+                </technical>
+                '''
+              )
+
+              # tabChildCopy.find('pitch').find('step').text = step
+              # tabChildCopy.find('pitch').find('octave').text = octave
+
+              # first check if the note has already a notation
+              # if it has, append the technicalNotation
+              # if not, first create it ET.Element('notation')
+
+              # if tabChildCopy.find('notation'):
+              #   tabChildCopy.find('notation').append(technicalNotation)
+              # else:
+              #   notation = ET.Element('notation')
+              #   notation.append(technicalNotation)
+              #   tabChildCopy.append(notation)
 
 
-          self.guitarMeasureTabElements.append(tabChildCopy)
+          # self.guitarMeasureTabElements.append(tabChildCopy)
       else:
         # Ignore other tag types because they are not relevant.
         pass
 
     # add a backup element to the guitar measure to go back to the start of the measure
     # and add the tabNotes on the staff 2 of the guitar measure
-    backup = ET.Element('backup')
-    backup.append(ET.Element('duration'))
-    backup.find('duration').text = str(self.duration)
-    self.guitarMeasure.append(backup)
-    # add the tabNotes to the guitar measure
-    for tabElement in self.guitarMeasureTabElements:
-      self.guitarMeasure.append(tabElement)
+    # backup = ET.Element('backup')
+    # backup.append(ET.Element('duration'))
+    # backup.find('duration').text = str(self.duration)
+    # self.guitarMeasure.append(backup)
+    # # add the tabNotes to the guitar measure
+    # for tabElement in self.guitarMeasureTabElements:
+    #   self.guitarMeasure.append(tabElement)
 
     self.guitarPart.append(self.guitarMeasure)
 
@@ -371,8 +412,8 @@ class Measure(object):
     self.state.time_position -= seconds
     self.state.xml_position -= backup_duration
 
-    self.guitarMeasure.append(copy.deepcopy(xml_backup))
-    self.guitarMeasureTabElements.append(copy.deepcopy(xml_backup))
+    # self.guitarMeasure.append(copy.deepcopy(xml_backup))
+    # self.guitarMeasureTabElements.append(copy.deepcopy(xml_backup))
 
   def _parse_direction(self, xml_direction):
     """Parse the MusicXML <direction> element."""
@@ -425,8 +466,8 @@ class Measure(object):
     self.state.time_position += seconds
     self.state.xml_position += forward_duration
 
-    self.guitarMeasure.append(copy.deepcopy(xml_forward))
-    self.guitarMeasureTabElements.append(copy.deepcopy(xml_forward))
+    # self.guitarMeasure.append(copy.deepcopy(xml_forward))
+    # self.guitarMeasureTabElements.append(copy.deepcopy(xml_forward))
 
   def _fix_time_signature(self):
     """Correct the time signature for incomplete measures.

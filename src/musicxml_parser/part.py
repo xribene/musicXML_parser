@@ -8,7 +8,9 @@ import copy
 class Part(object):
   """Internal represention of a MusicXML <part> element."""
 
-  def __init__(self, xml_part, score_parts, state, guitarPart = None, predictions = None, expandRepeats = True):
+  def __init__(self, xml_part, score_parts, state,
+                guitarPart = None, predictions = None, 
+                expandRepeats = True, noteCounter=0):
     self.id = ''
     self.score_part = None
     self.measures = []
@@ -17,6 +19,7 @@ class Part(object):
     self.guitarPart = guitarPart
     self.expandRepeats = expandRepeats
     self.firstMeasureFlag = True
+    self.noteCounter = noteCounter
     self._parse(xml_part, score_parts)
 
   def _parse(self, xml_part, score_parts):
@@ -53,7 +56,11 @@ class Part(object):
       self._repair_empty_measure(measure)
       self._state.measure_number = current_measure_number
       old_state = copy.copy(self._state)
-      parsed_measure = Measure(measure, self._state, self.predictions, self.guitarPart, isFirst = self.firstMeasureFlag)
+      parsed_measure = Measure(measure, self._state, self.predictions, 
+                               self.guitarPart, 
+                               isFirst = self.firstMeasureFlag,
+                               noteCounter = self.noteCounter)
+      self.noteCounter = parsed_measure.noteCounter
       self.firstMeasureFlag = False
       if self.expandRepeats:
         if parsed_measure.first_ending_start:
