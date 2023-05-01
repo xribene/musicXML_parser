@@ -80,6 +80,7 @@ class Measure(object):
       elif child.tag == 'backup':
         self._parse_backup(child)
         self.guitarMeasure.append(child)
+        self.guitarMeasureTabElements.append(copy.deepcopy(child))
       elif child.tag == 'barline':
         self._parse_barline(child)
         self.guitarMeasure.append(child)
@@ -93,6 +94,7 @@ class Measure(object):
       elif child.tag == 'forward':
         self._parse_forward(child)
         self.guitarMeasure.append(child)
+        self.guitarMeasureTabElements.append(copy.deepcopy(child))
       elif child.tag == 'harmony':
         chord_symbol = ChordSymbol(child, self.state)
         self.chord_symbols.append(chord_symbol)
@@ -125,8 +127,8 @@ class Measure(object):
             self.noteCounter += 1
             assert self.state.note_count == self.noteCounter
             prediction = None
-            if str(self.noteCounter-1) in self.predictions.keys():
-              prediction = self.predictions[str(self.noteCounter-1)]
+            if str(self.noteCounter) in self.predictions.keys():
+              prediction = self.predictions[str(self.noteCounter)]
             else:
               # print("no prediction for note ", self.noteCounter-1)
               child.set('color', 'red')
@@ -166,19 +168,26 @@ class Measure(object):
 
           self.guitarMeasure.append(childCopy)
 
-          # tabChildCopy = copy.deepcopy(childCopy)
-          # tabChildCopy.find('staff').text = '2'
-          # tabChildCopy.find('voice').text = str(int(childCopy.find('voice').text) + 10)
+          tabChildCopy = copy.deepcopy(childCopy)
+          tabChildCopy.find('staff').text = '2'
+          tabChildCopy.find('voice').text = str(int(childCopy.find('voice').text) + 10)
 
           if childCopy.find('rest') is None:
             if prediction:
               string = prediction[1] # 0 - Mi 6th, 1 - La 5th, 2 - Re 4th, 3 - Sol 3rd, 4 - Si 2nd, 5 - Mi 1st
               fret = prediction[2]
               step = prediction[4][:-1]
+              midi = prediction[3]
               octave = prediction[4][-1]
+
+              # make sure the chromatic pitch class of the prediction is the same 
+              # as the note in the original score. If it is, then I can safely use the 
+              # pitch element of the oriinal score.
+              assert(note.pitch[1]%12 == midi%12 )
               # print(f"{self.noteCounter} - {step}{octave} - {6-string} - {fret}")
               stepBefore = childCopy.find('pitch').find('step').text
-              childCopy.find('pitch').find('step').text = step
+              # childCopy.find('pitch').find('step').text = step
+              childCopy.find('pitch').find('octave').text = octave
               stepAfter = childCopy.find('pitch').find('step').text
               stepInPredictions = prediction[4][:-1]
               # print all steps
@@ -193,34 +202,34 @@ class Measure(object):
               )
 
               # tabChildCopy.find('pitch').find('step').text = step
-              # tabChildCopy.find('pitch').find('octave').text = octave
+              tabChildCopy.find('pitch').find('octave').text = octave
 
               # first check if the note has already a notation
               # if it has, append the technicalNotation
               # if not, first create it ET.Element('notation')
 
-              # if tabChildCopy.find('notation'):
-              #   tabChildCopy.find('notation').append(technicalNotation)
-              # else:
-              #   notation = ET.Element('notation')
-              #   notation.append(technicalNotation)
-              #   tabChildCopy.append(notation)
+              if tabChildCopy.find('notations'):
+                tabChildCopy.find('notations').append(technicalNotation)
+              else:
+                notation = ET.Element('notations')
+                notation.append(technicalNotation)
+                tabChildCopy.append(notation)
 
 
-          # self.guitarMeasureTabElements.append(tabChildCopy)
+          self.guitarMeasureTabElements.append(tabChildCopy)
       else:
         # Ignore other tag types because they are not relevant.
         pass
 
     # add a backup element to the guitar measure to go back to the start of the measure
     # and add the tabNotes on the staff 2 of the guitar measure
-    # backup = ET.Element('backup')
-    # backup.append(ET.Element('duration'))
-    # backup.find('duration').text = str(self.duration)
-    # self.guitarMeasure.append(backup)
+    backup = ET.Element('backup')
+    backup.append(ET.Element('duration'))
+    backup.find('duration').text = str(self.duration)
+    self.guitarMeasure.append(backup)
     # # add the tabNotes to the guitar measure
-    # for tabElement in self.guitarMeasureTabElements:
-    #   self.guitarMeasure.append(tabElement)
+    for tabElement in self.guitarMeasureTabElements:
+      self.guitarMeasure.append(tabElement)
 
     self.guitarPart.append(self.guitarMeasure)
 
@@ -260,10 +269,25 @@ class Measure(object):
 
         # Sum up the MusicXML durations in voice 1 of this measure
         if note.voice == 1 and not note.is_in_chord:
+          # xribene: this works because is_in_chord is set to true for
+          # all the notes in a chord except the first one
           self.duration += note.note_duration.duration
+          
+        # add an ID only to the notes that we are interested for score-reduction
+        # this id-ing process and note selection needs to be identical to the one in _parse2
+        # so during the creation of the guitar-score we can match the notes using the id
+        if note.note_duration.is_grace_note is True:
+          pass
+        else:
+          if child.find('rest') is None:
+            self.state.note_count += 1
+            note.id = self.state.note_count
+
       else:
         # Ignore other tag types because they are not relevant.
         pass
+
+
 
   def _parse_barline(self, xml_barline):
     """Parse the MusicXML <barline> element.
@@ -341,56 +365,57 @@ class Measure(object):
         pass
 
     # add the following attributes to the guitar part
-    if self.isFirstMeasure is True:
-      staves = ET.fromstring(f'''<staves>2</staves>''')
-      clef1 = ET.fromstring(
-        f'''<clef number="1">
-        <sign>G</sign>
-        <line>2</line>
-        <clef-octave-change>-1</clef-octave-change>
-        </clef>''')
-      clef2 = ET.fromstring(
-        f'''<clef number="2">
-        <sign>TAB</sign>
-        <line>5</line>
-        </clef>'''
-      )
-      staffDetails =  ET.fromstring(
-        f'''
-      <staff-details number="2">
-        <staff-lines>6</staff-lines>
-        <staff-tuning line="1">
-          <tuning-step>E</tuning-step>
-          <tuning-octave>2</tuning-octave>
-          </staff-tuning>
-        <staff-tuning line="2">
-          <tuning-step>A</tuning-step>
-          <tuning-octave>2</tuning-octave>
-          </staff-tuning>
-        <staff-tuning line="3">
-          <tuning-step>D</tuning-step>
-          <tuning-octave>3</tuning-octave>
-          </staff-tuning>
-        <staff-tuning line="4">
-          <tuning-step>G</tuning-step>
-          <tuning-octave>3</tuning-octave>
-          </staff-tuning>
-        <staff-tuning line="5">
-          <tuning-step>B</tuning-step>
-          <tuning-octave>3</tuning-octave>
-          </staff-tuning>
-        <staff-tuning line="6">
-          <tuning-step>E</tuning-step>
-          <tuning-octave>4</tuning-octave>
-          </staff-tuning>
-        </staff-details>
-      ''')
-      guitarAttributes.append(staves)
-      guitarAttributes.append(clef1)
-      guitarAttributes.append(clef2)
-      guitarAttributes.append(staffDetails)
+    if self.guitarPart is not None:
+      if self.isFirstMeasure is True:
+        staves = ET.fromstring(f'''<staves>2</staves>''')
+        clef1 = ET.fromstring(
+          f'''<clef number="1">
+          <sign>G</sign>
+          <line>2</line>
+          <clef-octave-change>-1</clef-octave-change>
+          </clef>''')
+        clef2 = ET.fromstring(
+          f'''<clef number="2">
+          <sign>TAB</sign>
+          <line>5</line>
+          </clef>'''
+        )
+        staffDetails =  ET.fromstring(
+          f'''
+        <staff-details number="2">
+          <staff-lines>6</staff-lines>
+          <staff-tuning line="1">
+            <tuning-step>E</tuning-step>
+            <tuning-octave>2</tuning-octave>
+            </staff-tuning>
+          <staff-tuning line="2">
+            <tuning-step>A</tuning-step>
+            <tuning-octave>2</tuning-octave>
+            </staff-tuning>
+          <staff-tuning line="3">
+            <tuning-step>D</tuning-step>
+            <tuning-octave>3</tuning-octave>
+            </staff-tuning>
+          <staff-tuning line="4">
+            <tuning-step>G</tuning-step>
+            <tuning-octave>3</tuning-octave>
+            </staff-tuning>
+          <staff-tuning line="5">
+            <tuning-step>B</tuning-step>
+            <tuning-octave>3</tuning-octave>
+            </staff-tuning>
+          <staff-tuning line="6">
+            <tuning-step>E</tuning-step>
+            <tuning-octave>4</tuning-octave>
+            </staff-tuning>
+          </staff-details>
+        ''')
+        guitarAttributes.append(staves)
+        guitarAttributes.append(clef1)
+        guitarAttributes.append(clef2)
+        guitarAttributes.append(staffDetails)
 
-    self.guitarMeasure.append(guitarAttributes)
+      self.guitarMeasure.append(guitarAttributes)
 
 
 

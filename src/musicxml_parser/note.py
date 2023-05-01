@@ -40,6 +40,7 @@ class Note(object):
     self.followed_by_fermata_rest = False
     self.measure_number = state.measure_number
     self.accidental = None
+    self.id = -1
 
     self._parse()
 
@@ -146,11 +147,11 @@ class Note(object):
   def _parse_tuplet(self, xml_time_modification):
     """Parses a tuplet ratio.
 
-Represented in MusicXML by the <time-modification> element.
+    Represented in MusicXML by the <time-modification> element.
 
-Args:
-  xml_time_modification: An xml time-modification element.
-"""
+    Args:
+      xml_time_modification: An xml time-modification element.
+    """
     numerator = int(xml_time_modification.find('actual-notes').text)
     denominator = int(xml_time_modification.find('normal-notes').text)
     self.note_duration.tuplet_ratio = Fraction(numerator, denominator)
