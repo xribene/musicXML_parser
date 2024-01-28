@@ -40,6 +40,8 @@ class Note(object):
     self.followed_by_fermata_rest = False
     self.measure_number = state.measure_number
     self.accidental = None
+    self.notehead_color = None
+    self.notehead_type = 'normal'
     self.id = -1
 
     self._parse()
@@ -96,6 +98,9 @@ class Note(object):
         self._parse_beam(child.text)
       elif child.tag == 'accidental':
         self.accidental = child.text
+      elif child.tag == 'notehead':
+        self.notehead_type = child.text
+        self.notehead_color = child.attrib.get('color', None)
       else:
         # Ignore other tag types because they are not relevant to mxp.
         pass

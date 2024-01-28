@@ -103,9 +103,10 @@ class MusicXMLDocument(object):
   using the parse method.
   """
 
-  def __init__(self, filename):
+  def __init__(self, filename, expandRepeats = True):
     self._score = self._get_score(filename)
     self.parts = []
+    self.expandRepeats = expandRepeats
     # ScoreParts indexed by id.
     self._score_parts = {}
     self.midi_resolution = constants.STANDARD_PPQ
@@ -231,7 +232,7 @@ class MusicXMLDocument(object):
 
     # Parse parts
     for score_part_index, child in enumerate(self._score.findall('part')):
-      part = Part(child, self._score_parts, self._state)
+      part = Part(child, self._score_parts, self._state, expandRepeats=self.expandRepeats)
       self.parts.append(part)
       score_part_index += 1
       if self._state.time_position > self.total_time_secs:
