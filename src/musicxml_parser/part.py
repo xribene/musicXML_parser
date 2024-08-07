@@ -28,6 +28,8 @@ class Part(object):
       self.id = xml_part.attrib['id']
     if self.id in score_parts:
       self.score_part = score_parts[self.id]
+      if self.score_part is None:
+        return
     else:
       # If this part references a score-part id that was not found in the file,
       # construct a default score-part.

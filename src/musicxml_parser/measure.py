@@ -48,7 +48,11 @@ class Measure(object):
     self.start_xml_position = self.state.xml_position
 
     measureNumber = self.xml_measure.attrib['number']
-    width = self.xml_measure.attrib['width']
+    # check if the measure has a width attribute
+    if 'width' in self.xml_measure.attrib.keys():
+      width = self.xml_measure.attrib['width']
+    else:
+      width = '0'
     self.predictions = predictions
     self.guitarPart = guitarPart
     # print(self.guitarPart)
@@ -57,9 +61,10 @@ class Measure(object):
       self.guitarMeasureTabElements = []
       self.guitarMeasure = ET.fromstring(
         f'''
-        <measure number="{measureNumber}" width="{width}">
+        <measure number="{measureNumber}">
       </measure>
       ''')
+      #  width="{width}">
       self._parse2()
 
     else:

@@ -75,3 +75,33 @@ NOTE_KEYS = [
   [1, 3, 5, 6, 8, 10, 11],
   [0, 2, 4, 6, 7, 9, 11]
 ]
+
+
+# Drum keywords
+DRUM_PART_KEYWORDS = [
+    'drums',
+    'drum',
+    'dr',
+    'percussion',
+    'perc',
+    'drum set',
+    'drum kit',
+    'snare',
+    'kick',
+    'hi-hat',
+    'cymbal',
+    'tom',
+    'ride',
+    'crash',
+    'clap',
+    'cowbell',
+    'tambourine',
+    'woodblock',
+    'maracas',
+    'guiro',
+    'cabasa',
+    'triangle',
+    'shaker',
+    'claves',
+    'cajon',
+]

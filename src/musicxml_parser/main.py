@@ -103,10 +103,11 @@ class MusicXMLDocument(object):
   using the parse method.
   """
 
-  def __init__(self, filename, expandRepeats = True):
+  def __init__(self, filename, expandRepeats = True, ignore_drums = False):
     self._score = self._get_score(filename)
     self.parts = []
     self.expandRepeats = expandRepeats
+    self.ignore_drums = ignore_drums
     # ScoreParts indexed by id.
     self._score_parts = {}
     self.midi_resolution = constants.STANDARD_PPQ
@@ -227,14 +228,35 @@ class MusicXMLDocument(object):
     if xml_part_list is not None:
       for element in xml_part_list:
         if element.tag == 'score-part':
+          # Convert element to text
+          element_text = ET.tostring(element, encoding='utf-8').decode('utf-8')
+          # Check if the element contains keywords such as 'Drum', 'Percussion', 'Drums', 'Snare', 'Cymbal', 'Cajon', 'Tambourine' etc
+          # if so, then ignore the part
+          is_drum_part = False
+          if any(keyword in element_text.lower() for keyword in constants.DRUM_PART_KEYWORDS):
+            # continue
+            is_drum_part = True
+          # Find if there is something like <midi-unpitched>38</midi-unpitched>
+          if element.find('midi-instrument') is not None:
+            midi_instrument = element.find('midi-instrument')
+            if midi_instrument.find('midi-unpitched') is not None:
+              # self._state.transpose = int(midi_instrument.find('midi-unpitched').text
+              # continue
+              is_drum_part = True
           score_part = ScorePart(element)
-          self._score_parts[score_part.id] = score_part
+          # score_part_id = score_part.id
+          if self.ignore_drums and is_drum_part:
+            self._score_parts[score_part.id] = None
+          else:
+            self._score_parts[score_part.id] = score_part
 
     # Parse parts
     for score_part_index, child in enumerate(self._score.findall('part')):
       part = Part(child, self._score_parts, self._state, expandRepeats=self.expandRepeats)
+      if part.score_part is None:
+        continue
       self.parts.append(part)
-      score_part_index += 1
+      # score_part_index += 1
       if self._state.time_position > self.total_time_secs:
         self.total_time_secs = self._state.time_position
       if self._state.xml_position > self.total_time_duration:
