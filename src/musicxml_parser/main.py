@@ -103,11 +103,18 @@ class MusicXMLDocument(object):
   using the parse method.
   """
 
-  def __init__(self, filename, expandRepeats = True, ignore_drums = False):
+  def __init__(self, filename, 
+               expandRepeats = True, 
+               ignore_drums = False,
+               is_guitar_score = False,
+               ignore_tab = True,
+               ):
     self._score = self._get_score(filename)
     self.parts = []
     self.expandRepeats = expandRepeats
     self.ignore_drums = ignore_drums
+    self.is_guitar_score = is_guitar_score
+    self.ignore_tab = ignore_tab
     # ScoreParts indexed by id.
     self._score_parts = {}
     self.midi_resolution = constants.STANDARD_PPQ
@@ -444,10 +451,16 @@ class MusicXMLDocument(object):
     notes = []
     rests = []
     num_parts = len(self.parts)
+    tab_only = None # 
+    if self.is_guitar_score:
+      tab_only = False
+    if not self.ignore_tab:
+      tab_only = True
     for instrument_index in range(num_parts):
       part = self.parts[instrument_index]
 
-      notes_part, rests_part = get_playable_notes(part)
+      notes_part, rests_part = get_playable_notes(part, 
+                                      melody_only=melody_only, tab_only=tab_only)
       notes.extend(notes_part)
       rests.extend(rests_part)
     notes.sort(key=lambda x: (x.note_duration.xml_position,

@@ -16,7 +16,7 @@ import random
 class Measure(object):
   """Internal represention of the MusicXML <measure> element."""
 
-  def __init__(self, xml_measure, state, predictions = None, 
+  def __init__(self, xml_measure, xml_parent_part, state, predictions = None, 
                guitarPart = None, isFirst = False,
                noteCounter=0):
     self.xml_measure = xml_measure
@@ -36,6 +36,7 @@ class Measure(object):
     self.first_ending_stop = False  # 'start' or 'end' or None
     self.isFirstMeasure = isFirst
     self.noteCounter=noteCounter
+    self.parent_part = xml_parent_part
 
     # Cumulative duration in MusicXML duration.
     # Used for time signature calculations
@@ -265,7 +266,7 @@ class Measure(object):
         chord_symbol = ChordSymbol(child, self.state)
         self.chord_symbols.append(chord_symbol)
       elif child.tag == 'note':
-        note = Note(child, self.state)
+        note = Note(child, self, self.state)
         self.notes.append(note)
         # Keep track of current note as previous note for chord timings
         self.state.previous_note_duration = note.note_duration.duration
@@ -350,6 +351,42 @@ class Measure(object):
           guitarAttributes.append(copy.deepcopy(child))
         else:
           raise MultipleTimeSignatureException('Multiple time signatures')
+      elif child.tag == 'staves':
+        # TODO: handle guitarAttributes
+        self.parent_part.num_staves = int(child.text)
+      elif child.tag == 'clef':
+        clef_sign = child.find('sign')
+        if clef_sign is not None:
+          clef_sign = clef_sign.text
+        clef_line = child.find('line')
+        if clef_line is not None:
+          clef_line = int(clef_line.text)
+        clef_octave_change = child.find('clef-octave-change')
+        if clef_octave_change is not None:
+          clef_octave_change = int(clef_octave_change.text)
+        
+        self.parent_part.clefs.append(
+          {
+            'sign': clef_sign, 
+            'line': clef_line,
+            'clef-octave-change': clef_octave_change
+          })
+      elif child.tag == 'staff-details':
+        staff_id = int(child.attrib['number'])
+        # I'm assuming the clefs have been parsed before the staff-details
+        current_clef = self.parent_part.clefs[staff_id - 1]
+        if current_clef['sign'] == 'TAB':
+          self.parent_part.tab_staff_ind = staff_id
+          self.parent_part.has_tab = True
+          self.parent_part.num_strings = int(child.find('staff-lines').text)
+          xml_staff_tuning = child.findall('staff-tuning')
+          assert len(xml_staff_tuning) == self.parent_part.num_strings
+          self.parent_part.tuning = [None] * self.parent_part.num_strings
+          for tuning in xml_staff_tuning:
+            line_idx = int(tuning.attrib['line']) - 1
+            step = tuning.find('tuning-step').text
+            octave = tuning.find('tuning-octave').text
+            self.parent_part.tuning[line_idx] = (step, octave)
       elif child.tag == 'transpose':
         transpose = int(child.find('chromatic').text)
         self.state.transpose = transpose

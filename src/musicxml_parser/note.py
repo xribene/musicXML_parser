@@ -12,7 +12,7 @@ import copy
 class Note(object):
   """Internal representation of a MusicXML <note> element."""
 
-  def __init__(self, xml_note, state):
+  def __init__(self, xml_note, parent_measure, state):
     self.xml_note = xml_note
     self.voice = 1
     self.is_rest = False
@@ -43,6 +43,8 @@ class Note(object):
     self.notehead_color = None
     self.notehead_type = 'normal'
     self.id = -1
+    self.parent_measure = parent_measure
+    self.is_tab_note = False
 
     self._parse()
 
@@ -92,6 +94,8 @@ class Note(object):
           self.note_notations.is_slash = True
       elif child.tag == 'staff':
         self.staff = int(child.text)
+        if self.staff == self.parent_measure.parent_part.tab_staff_ind:
+          self.is_tab_note = True
       elif child.tag == 'cue':
         self.note_notations.is_cue = True
       elif child.tag == 'beam':

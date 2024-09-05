@@ -18,6 +18,7 @@ class Technical(object):
     self.pluck = None
     self.is_hammered_on = False
     self.is_pulled_off = False
+    self.fingering = None
 
   def parse_technical(self, xml_technical):
     """Parse the MusicXML <Technical> element."""
@@ -37,3 +38,8 @@ class Technical(object):
         elif child.tag == 'pull-off':
             if child.attrib['type'] == 'stop':
                 self.is_pulled_off = True
+        elif child.tag == 'fingering':
+            try:
+              self.fingering = int(child.text)
+            except:
+              self.fingering = None

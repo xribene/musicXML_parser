@@ -1,10 +1,30 @@
-def get_playable_notes(xml_part, melody_only=False):
+def get_playable_notes(xml_part, melody_only=False, tab_only=None):
+    case = 0
+    if tab_only is None:
+        # we extract notes from all parts
+        case = 0
+    else:
+        if tab_only is True:
+            # we extract notes from tab parts only
+            case = 1
+        else:
+            # we extract notes from non-tab parts only
+            case = 2
     notes = []
     measure_number = 1
     for measure in xml_part.measures:
         for note in measure.notes:
-            note.measure_number = measure_number
-            notes.append(note)
+            if case == 1:
+                if note.is_tab_note:
+                    note.measure_number = measure_number
+                    notes.append(note)
+            elif case == 2:
+                if not note.is_tab_note:
+                    note.measure_number = measure_number
+                    notes.append(note)
+            else:
+                note.measure_number = measure_number
+                notes.append(note)
         measure_number += 1
 
     notes, rests = classify_notes(notes, melody_only=melody_only)
@@ -30,7 +50,7 @@ def classify_notes(notes, melody_only=False):
     notes_tmp = []
     for note in notes:
         if melody_only:
-            if note.voice != 1:
+            if note.voice != 1: #TODO in TAB staff=2 voice=5 is melody
                 continue
         if note.note_duration.is_grace_note:
             grace_tmp.append(note)

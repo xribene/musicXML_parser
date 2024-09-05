@@ -16,10 +16,18 @@ class Part(object):
     self.measures = []
     self._state = state
     self.predictions = predictions
-    self.guitarPart = guitarPart
+    self.guitarPart = guitarPart # input containing guitar tablature ?
     self.expandRepeats = expandRepeats
     self.firstMeasureFlag = True
     self.noteCounter = noteCounter
+    # The vars below are updated by the child measures
+    self.num_staves = -1
+    self.has_tab = False
+    self.num_strings = 0
+    self.tuning = []
+    self.clefs = []
+    # self.staff_details = []
+    self.tab_staff_ind = -1
     self._parse(xml_part, score_parts)
 
   def _parse(self, xml_part, score_parts):
@@ -58,7 +66,7 @@ class Part(object):
       self._repair_empty_measure(measure)
       self._state.measure_number = current_measure_number
       old_state = copy.copy(self._state)
-      parsed_measure = Measure(measure, self._state, self.predictions, 
+      parsed_measure = Measure(measure, self, self._state, self.predictions, 
                                self.guitarPart, 
                                isFirst = self.firstMeasureFlag,
                                noteCounter = self.noteCounter)
