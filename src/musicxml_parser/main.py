@@ -106,15 +106,11 @@ class MusicXMLDocument(object):
   def __init__(self, filename, 
                expandRepeats = True, 
                ignore_drums = False,
-               is_guitar_score = False,
-               ignore_tab = True,
                ):
     self._score = self._get_score(filename)
     self.parts = []
     self.expandRepeats = expandRepeats
     self.ignore_drums = ignore_drums
-    self.is_guitar_score = is_guitar_score
-    self.ignore_tab = ignore_tab
     # ScoreParts indexed by id.
     self._score_parts = {}
     self.midi_resolution = constants.STANDARD_PPQ
@@ -451,21 +447,31 @@ class MusicXMLDocument(object):
     notes = []
     rests = []
     num_parts = len(self.parts)
-    tab_only = None # 
-    if self.is_guitar_score:
-      tab_only = False
-    if not self.ignore_tab:
-      tab_only = True
     for instrument_index in range(num_parts):
       part = self.parts[instrument_index]
 
       notes_part, rests_part = get_playable_notes(part, 
-                                      melody_only=melody_only, tab_only=tab_only)
+                                      melody_only=melody_only, 
+                                      # tab_only=tab_only
+                                      )
       notes.extend(notes_part)
       rests.extend(rests_part)
     notes.sort(key=lambda x: (x.note_duration.xml_position,
               x.note_duration.grace_order, -x.pitch[1]))
     return notes, rests
+  
+  def get_part_notes(self, part, melody_only=False, grace_note=True, ignore_slurs=False):
+
+    notes_part, rests_part = get_playable_notes(part, 
+                                    melody_only=melody_only, 
+                                    ignore_slurs=ignore_slurs
+                                    # tab_only=tab_only
+                                    )
+      # notes.extend(notes_part)
+      # rests.extend(rests_part)
+    notes_part.sort(key=lambda x: (x.note_duration.xml_position,
+              x.note_duration.grace_order, -x.pitch[1]))
+    return notes_part, rests_part
 
 
   def find(self, f, seq):
@@ -557,6 +563,8 @@ class MusicXMLDocument(object):
       #     measure_length = measure_start - piano.measures[i-1].start_xml_position
 
       num_beat_in_measure = corresp_time_sig.numerator
+      if num_beat_in_measure == 0:
+        continue
       if in_measure_level:
         num_beat_in_measure = 1
       elif num_beat_in_measure == 6:

@@ -153,10 +153,15 @@ class ChordSymbol(object):
           continue
         kind_text = str(child.text).strip()
         if kind_text not in self.CHORD_KIND_ABBREVIATIONS:
-          raise ChordSymbolParseException('Unknown chord kind: ' + kind_text)
+          # raise ChordSymbolParseException('Unknown chord kind: ' + kind_text)
+          # For now, we'll just ignore unknown chord kinds.
+          continue
         self.kind = self.CHORD_KIND_ABBREVIATIONS[kind_text]
       elif child.tag == 'degree':
-        self.degrees.append(self._parse_degree(child))
+        try:
+          self.degrees.append(self._parse_degree(child))
+        except:
+          pass
       elif child.tag == 'bass':
         self._parse_bass(child)
       elif child.tag == 'offset':
@@ -164,8 +169,9 @@ class ChordSymbol(object):
         try:
           offset = int(child.text)
         except ValueError:
-          raise ChordSymbolParseException('Non-integer offset: ' +
-                                          str(child.text))
+          continue
+          # raise ChordSymbolParseException('Non-integer offset: ' +
+          #                                 str(child.text))
         midi_ticks = offset * constants.STANDARD_PPQ / self.state.divisions
         seconds = (midi_ticks / constants.STANDARD_PPQ *
                    self.state.seconds_per_quarter)
@@ -176,7 +182,8 @@ class ChordSymbol(object):
         pass
 
     if self.root is None and self.kind != 'N.C.':
-      raise ChordSymbolParseException('Chord symbol must have a root')
+      pass
+      # raise ChordSymbolParseException('Chord symbol must have a root')
 
   def _parse_pitch(self, xml_pitch, step_tag, alter_tag):
     """Parse and return the pitch-like <root> or <bass> element."""

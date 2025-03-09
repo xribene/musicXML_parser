@@ -26,6 +26,7 @@ class Part(object):
     self.num_strings = 0
     self.tuning = []
     self.clefs = []
+    self.is_alternate_tuning = False
     # self.staff_details = []
     self.tab_staff_ind = -1
     self._parse(xml_part, score_parts)

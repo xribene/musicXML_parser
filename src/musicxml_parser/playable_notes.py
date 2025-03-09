@@ -1,30 +1,30 @@
-def get_playable_notes(xml_part, melody_only=False, tab_only=None):
-    case = 0
-    if tab_only is None:
-        # we extract notes from all parts
-        case = 0
-    else:
-        if tab_only is True:
-            # we extract notes from tab parts only
-            case = 1
-        else:
-            # we extract notes from non-tab parts only
-            case = 2
+def get_playable_notes(xml_part, melody_only=False, ignore_slurs=False):#, tab_only=None):
+    # case = 0
+    # if tab_only is None:
+    #     # we extract notes from all parts
+    #     case = 0
+    # else:
+    #     if tab_only is True:
+    #         # we extract notes from tab parts only
+    #         case = 1
+    #     else:
+    #         # we extract notes from non-tab parts only
+    #         case = 2
     notes = []
     measure_number = 1
     for measure in xml_part.measures:
         for note in measure.notes:
-            if case == 1:
-                if note.is_tab_note:
-                    note.measure_number = measure_number
-                    notes.append(note)
-            elif case == 2:
-                if not note.is_tab_note:
-                    note.measure_number = measure_number
-                    notes.append(note)
-            else:
-                note.measure_number = measure_number
-                notes.append(note)
+            # if case == 1:
+            #     if note.is_tab_note:
+            #         note.measure_number = measure_number
+            #         notes.append(note)
+            # elif case == 2:
+            #     if not note.is_tab_note:
+            #         note.measure_number = measure_number
+            #         notes.append(note)
+            # else:
+            note.measure_number = measure_number
+            notes.append(note)
         measure_number += 1
 
     notes, rests = classify_notes(notes, melody_only=melody_only)
@@ -37,7 +37,8 @@ def get_playable_notes(xml_part, melody_only=False, tab_only=None):
     notes = check_overlapped_notes(notes)
     notes = apply_rest_to_note(notes, rests)
     notes = omit_trill_notes(notes)
-    notes = extract_and_apply_slurs(notes)
+    # if not ignore_slurs:
+    notes = extract_and_apply_slurs(notes, ignore_slurs)
     # notes = self.rearrange_chord_index(notes)
     return notes, rests
 
@@ -331,7 +332,7 @@ def omit_trill_notes(notes):
 
     return notes
 
-def extract_and_apply_slurs(notes):
+def extract_and_apply_slurs(notes, ignore_slurs=False):
     startSlurs = []
     stopSlurs = []
     for note in notes:
@@ -348,7 +349,8 @@ def extract_and_apply_slurs(notes):
                     slur.end_xml_position = note.note_duration.xml_position
                     note.note_notations.is_slur_stop = True
                     stopSlurs.append(slur)
-    assert(len(startSlurs) == len(stopSlurs))
+    if not ignore_slurs:
+        assert(len(startSlurs) == len(stopSlurs))
     # ensure slurs are sorted
     startSlurs.sort(key=lambda x: (x.xml_position))
     stopSlurs.sort(key=lambda x: (x.end_xml_position))

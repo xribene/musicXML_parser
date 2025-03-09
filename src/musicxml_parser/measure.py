@@ -380,13 +380,24 @@ class Measure(object):
           self.parent_part.has_tab = True
           self.parent_part.num_strings = int(child.find('staff-lines').text)
           xml_staff_tuning = child.findall('staff-tuning')
+          # If <staff-type>alternate</staff-type> exists in 
+          if child.find('staff-type') is not None:
+            if child.find('staff-type').text == 'alternate':
+              self.parent_part.is_alternate_tuning = True
           assert len(xml_staff_tuning) == self.parent_part.num_strings
           self.parent_part.tuning = [None] * self.parent_part.num_strings
           for tuning in xml_staff_tuning:
             line_idx = int(tuning.attrib['line']) - 1
             step = tuning.find('tuning-step').text
-            octave = tuning.find('tuning-octave').text
-            self.parent_part.tuning[line_idx] = (step, octave)
+            octave = int(tuning.find('tuning-octave').text)
+            alter = ""
+            if tuning.find('tuning-alter') is not None:
+              alter = int(tuning.find('tuning-alter').text)
+              if alter == 1:
+                alter = "#"
+              elif alter == -1:
+                alter = "b"
+            self.parent_part.tuning[line_idx] = (step, octave, alter)
       elif child.tag == 'transpose':
         transpose = int(child.find('chromatic').text)
         self.state.transpose = transpose
