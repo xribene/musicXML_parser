@@ -10,7 +10,7 @@ from .note import Note
 from .direction import Direction
 from xml.etree import ElementTree as ET
 import copy
-from pdb import set_trace as st
+from pdb import set_trace
 import random
 
 class Measure(object):
@@ -18,7 +18,7 @@ class Measure(object):
 
   def __init__(self, xml_measure, xml_parent_part, state, predictions = None, 
                guitarPart = None, isFirst = False,
-               noteCounter=0):
+               noteCounter=0 ):
     self.xml_measure = xml_measure
     self.notes = []
     self.directions = []
@@ -105,7 +105,7 @@ class Measure(object):
         chord_symbol = ChordSymbol(child, self.state)
         self.chord_symbols.append(chord_symbol)
       elif child.tag == 'note':
-        note = Note(child, self.state)
+        note = Note(child, self, self.state)
         self.notes.append(note)
         # Keep track of current note as previous note for chord timings
         self.state.previous_note_duration = note.note_duration.duration
@@ -117,7 +117,7 @@ class Measure(object):
           # xribene: this works because is_in_chord is set to true for
           # all the notes in a chord except the first one
           self.duration += note.note_duration.duration
-
+        
         # create the guitar note
         if note.note_duration.is_grace_note is True:
           pass
@@ -132,35 +132,67 @@ class Measure(object):
             self.state.note_count += 1
             self.noteCounter += 1
             assert self.state.note_count == self.noteCounter
-            prediction = None
-            if str(self.noteCounter) in self.predictions.keys():
-              prediction = self.predictions[str(self.noteCounter)]
+            if note.is_tab_note or note.notehead_type == "diamond":
+              # This is a tab note, and in the task of tablature-assignment (ReductedMusicXML) we ignore it
+              # because it messes up our note-indices.
+              # I also make sure this check happens after the noteCounter is incremented
+              # because the tab-notes were considered when parsing the original score during dataset creation
+              continue
+            # slur_predicted_tab = None
+            # if note.note_notations.tied_start is True:
+            #   aa = 42
+            # if note.note_notations.tie is not None:
+            #   aa = 42
+            if note.note_notations.tied_stop is True:
+              # this is a tied note. During the dataset preprocessing, we merge the tied notes
+              # with the previous note. So the agent doesn't see this note's id and doesn't predict anything for it.
+              # In that case, we'll use the previous note's prediction. Since the notes are parsed horizontally per voice
+              # we can safely assume that self.predictions["tab"][self.noteCounter - 1] exists
+              # slur_predicted_tab = self.predictions["tab"][self.noteCounter - 1]
+
+              # We can't actually safely assume the above, since it breaks when we have cross-measure tie.
+              # Instead, we'll process the note as usual, but we won't add <notation> to it.
+              # Musescore will fill it with the correct tablature from the previous tied note.
+              pass
+
+            predicted_tab = None
+            if self.noteCounter in self.predictions["tab"].keys():
+              predicted_tab = self.predictions["tab"][self.noteCounter]
             else:
-              # print("no prediction for note ", self.noteCounter-1)
-              child.set('color', 'red')
+              if note.note_notations.tied_stop is True:
+                pass
+              else:
+                # print("no prediction for note ", self.noteCounter-1)
+                child.set('color', 'red')
+                raise Exception(f"No prediction for note {self.noteCounter-1}")
             # use the note_count and the name of the note to create the id of the note
             # also this note_count now matches with the indeces (range) of the predictions
-            if prediction:
-              if prediction[0] == 0:
-                # it's decided to ignore this note, so we replace it with a rest
-                childCopy.insert(0, ET.Element('rest'))
-                for noteElement in child:
-                  # delete the stem and pitch elements
-                  if noteElement.tag not in ['stem', 'pitch']:
-                    childCopy.append(copy.deepcopy(noteElement))
+            if predicted_tab is not None:
+              # if prediction[0] == 0:
+              #   # it's decided to ignore this note, so we replace it with a rest
+              #   childCopy.insert(0, ET.Element('rest'))
+              #   for noteElement in child:
+              #     # delete the stem and pitch elements
+              #     if noteElement.tag not in ['stem', 'pitch']:
+              #       childCopy.append(copy.deepcopy(noteElement))
 
-              else:
-                # if the note is "KEEP"
-                # TODO: even if the note is "KEEP", the octave might be different.
-                # from predictions, take the midi note and convert it to pitch and octave
-                childCopy = copy.deepcopy(child)
-                child.set('color', 'green')
+              # else:
+              # if the note is "KEEP"
+              # TODO: even if the note is "KEEP", the octave might be different.
+              # from predictions, take the midi note and convert it to pitch and octave
+              childCopy = copy.deepcopy(child)
+              child.set('color', 'green')
             else:
-              childCopy.insert(0, ET.Element('rest'))
-              for noteElement in child:
-                  # delete the stem and pitch elements
-                  if noteElement.tag not in ['stem', 'pitch']:
-                    childCopy.append(copy.deepcopy(noteElement))
+              if note.note_notations.tied_stop is False:
+                raise Exception(f"No prediction for note {self.noteCounter-1}")
+                # childCopy.insert(0, ET.Element('rest'))
+                # for noteElement in child:
+                #     # delete the stem and pitch elements
+                #     if noteElement.tag not in ['stem', 'pitch']:
+                #       childCopy.append(copy.deepcopy(noteElement))
+              else:
+                childCopy = copy.deepcopy(child)
+                child.set('color', 'blue') # debug color for tied notes
                 
           else:
             # for rests, our RL agent doesn't make any decisions.
@@ -174,30 +206,55 @@ class Measure(object):
 
           self.guitarMeasure.append(childCopy)
 
+          # Some cleaning on the childCopy before we create the tabChildCopy
+          prev_notations = childCopy.find('notations')
+          if prev_notations is not None:
+            # If there is already a notation element, 
+            # Check if it includes <fingering>
+            # if yes, we need to delete it.
+            # Get the notations element
+            
+            # Get the technical element
+            prev_technical = prev_notations.find('technical')
+            if prev_technical is not None:
+              # if there is <fingering> element, remove it
+              # prev_fingering = prev_technical.find('fingering')
+              # if prev_fingering is not None:
+              #   prev_technical.remove(prev_fingering)
+              # prev_open_string = prev_technical.find('open-string')
+              # if prev_open_string is not None:
+              #   prev_technical.remove(prev_open_string)
+
+              # Delete the prev_technical element
+              prev_notations.remove(prev_technical)
+          
           tabChildCopy = copy.deepcopy(childCopy)
           tabChildCopy.find('staff').text = '2'
           tabChildCopy.find('voice').text = str(int(childCopy.find('voice').text) + 10)
 
           if childCopy.find('rest') is None:
-            if prediction:
-              string = prediction[1] # 0 - Mi 6th, 1 - La 5th, 2 - Re 4th, 3 - Sol 3rd, 4 - Si 2nd, 5 - Mi 1st
-              fret = prediction[2]
-              step = prediction[4][:-1]
-              midi = prediction[3]
-              octave = prediction[4][-1]
+            tabChildCopy.find('pitch').find('octave').text = str(int(tabChildCopy.find('pitch').find('octave').text) - 1)
+            childCopy.find('pitch').find('octave').text = str(int(childCopy.find('pitch').find('octave').text) - 1)
+            if predicted_tab is not None:
+              string = predicted_tab[0] # 0 - Mi 6th, 1 - La 5th, 2 - Re 4th, 3 - Sol 3rd, 4 - Si 2nd, 5 - Mi 1st
+              fret = predicted_tab[1]
+              # step = prediction[4][:-1]
+              # midi = prediction[3]
+              # octave = prediction[4][-1]
 
               # make sure the chromatic pitch class of the prediction is the same 
               # as the note in the original score. If it is, then I can safely use the 
               # pitch element of the oriinal score.
-              assert(note.pitch[1]%12 == midi%12 )
+              tuning_based_midi = self.predictions["tuning_midi"][string] + fret
+              assert(note.pitch[1] % 12 == tuning_based_midi % 12 )
               # print(f"{self.noteCounter} - {step}{octave} - {6-string} - {fret}")
-              stepBefore = childCopy.find('pitch').find('step').text
+              # stepBefore = childCopy.find('pitch').find('step').text
               # childCopy.find('pitch').find('step').text = step
-              childCopy.find('pitch').find('octave').text = octave
-              stepAfter = childCopy.find('pitch').find('step').text
-              stepInPredictions = prediction[4][:-1]
+              # childCopy.find('pitch').find('octave').text = octave
+              # stepAfter = childCopy.find('pitch').find('step').text
+              # stepInPredictions = prediction[4][:-1]
               # print all steps
-              print(f"stepBefore: {stepBefore} - stepAfter: {stepAfter} - stepInPredictions: {stepInPredictions}")
+              # print(f"stepBefore: {stepBefore} - stepAfter: {stepAfter} - stepInPredictions: {stepInPredictions}")
               # childCopy.find('pitch').find('octave').text = octave
               technicalNotation = ET.fromstring(
                 f'''<technical>
@@ -206,20 +263,30 @@ class Measure(object):
                 </technical>
                 '''
               )
+              # technicalNotation = ET.fromstring(
+              #   f'''<technical>
+              #   </technical>
+              #   '''
+              # )
 
               # tabChildCopy.find('pitch').find('step').text = step
-              tabChildCopy.find('pitch').find('octave').text = octave
+              # tabChildCopy.find('pitch').find('octave').text = octave
 
               # first check if the note has already a notation
               # if it has, append the technicalNotation
               # if not, first create it ET.Element('notation')
-
-              if tabChildCopy.find('notations'):
-                tabChildCopy.find('notations').append(technicalNotation)
+              prev_notations = tabChildCopy.find('notations')
+              if prev_notations is not None:
+                # Append the new technicalNotation
+                prev_notations.append(technicalNotation)
+                 
               else:
                 notation = ET.Element('notations')
                 notation.append(technicalNotation)
                 tabChildCopy.append(notation)
+            else:
+              if note.note_notations.tied_stop is False:
+                raise Exception(f"No prediction for note {self.noteCounter-1}")
 
 
           self.guitarMeasureTabElements.append(tabChildCopy)
@@ -433,36 +500,71 @@ class Measure(object):
           <line>5</line>
           </clef>'''
         )
-        staffDetails =  ET.fromstring(
-          f'''
-        <staff-details number="2">
-          <staff-lines>6</staff-lines>
-          <staff-tuning line="1">
-            <tuning-step>E</tuning-step>
-            <tuning-octave>2</tuning-octave>
-            </staff-tuning>
-          <staff-tuning line="2">
-            <tuning-step>A</tuning-step>
-            <tuning-octave>2</tuning-octave>
-            </staff-tuning>
-          <staff-tuning line="3">
-            <tuning-step>D</tuning-step>
-            <tuning-octave>3</tuning-octave>
-            </staff-tuning>
-          <staff-tuning line="4">
-            <tuning-step>G</tuning-step>
-            <tuning-octave>3</tuning-octave>
-            </staff-tuning>
-          <staff-tuning line="5">
-            <tuning-step>B</tuning-step>
-            <tuning-octave>3</tuning-octave>
-            </staff-tuning>
-          <staff-tuning line="6">
-            <tuning-step>E</tuning-step>
-            <tuning-octave>4</tuning-octave>
-            </staff-tuning>
-          </staff-details>
-        ''')
+        # Get the tuning in MIDI from the predictions
+        tuning_xml = self.predictions["tuning_xml"]
+        # The tuning_xml is a list of tuples. For exmaple 
+        # [('E',3, 0.0), ('A',2, 1.0), ('D',2, -1.0), ('G',2, 0.0), ('B',2, 0.0), ('E',2, 0.0)]
+        # The first element of the tuple is the tuning-step of the current string
+        # The second element of the tuple is the tuning-octave of the current string
+        # The third element of the tuple is the tuning-alter of the current string. Note that
+        # if the tuning-alter is 0.0, we shouldn't include it in the xml for that string
+        
+        # staffDetails =  ET.fromstring(
+        #   f'''
+        # <staff-details number="2">
+        #   <staff-lines>6</staff-lines>
+        #   <staff-tuning line="1">
+        #     <tuning-step>E</tuning-step>
+        #     <tuning-octave>2</tuning-octave>
+        #     </staff-tuning>
+        #   <staff-tuning line="2">
+        #     <tuning-step>A</tuning-step>
+        #     <tuning-octave>2</tuning-octave>
+        #     </staff-tuning>
+        #   <staff-tuning line="3">
+        #     <tuning-step>D</tuning-step>
+        #     <tuning-octave>3</tuning-octave>
+        #     </staff-tuning>
+        #   <staff-tuning line="4">
+        #     <tuning-step>G</tuning-step>
+        #     <tuning-octave>3</tuning-octave>
+        #     </staff-tuning>
+        #   <staff-tuning line="5">
+        #     <tuning-step>B</tuning-step>
+        #     <tuning-octave>3</tuning-octave>
+        #     </staff-tuning>
+        #   <staff-tuning line="6">
+        #     <tuning-step>E</tuning-step>
+        #     <tuning-octave>4</tuning-octave>
+        #     </staff-tuning>
+        #   </staff-details>
+        # ''')
+        # Replace the hardcoded staffDetails with a dynamically generated one
+        staffDetails = ET.Element('staff-details')
+        staffDetails.set('number', '2')
+
+        staff_lines = ET.SubElement(staffDetails, 'staff-lines')
+        staff_lines.text = '6'
+
+        # Loop through the tuning_xml to create staff-tuning elements
+        for i, (step, octave, alter) in enumerate(tuning_xml, 1):
+          # Create staff-tuning element for each string
+          staff_tuning = ET.SubElement(staffDetails, 'staff-tuning')
+          staff_tuning.set('line', str(i))
+          
+          # Add tuning-step
+          tuning_step = ET.SubElement(staff_tuning, 'tuning-step')
+          tuning_step.text = step
+          
+          # Add tuning-octave
+          tuning_octave = ET.SubElement(staff_tuning, 'tuning-octave')
+          tuning_octave.text = str(octave)
+          
+          # Only add tuning-alter if it's not 0.0
+          if alter != 0.0:
+            tuning_alter = ET.SubElement(staff_tuning, 'tuning-alter')
+            tuning_alter.text = str(int(alter) if alter.is_integer() else alter)
+
         guitarAttributes.append(staves)
         guitarAttributes.append(clef1)
         guitarAttributes.append(clef2)
