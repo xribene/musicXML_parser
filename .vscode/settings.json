@@ -1,0 +1,18 @@
+{
+    // "svg.preview.background": "white",
+    // "python.defaultInterpreterPath": "C:\\Users\\xribene\\miniconda3\\envs\\score\\python.exe",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnType": false,
+        // "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": false,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "never",
+            "source.organizeImports": "never"
+        }
+    },
+    // "ruff.format.args": [
+    //     "--config",
+    //     "C:\\Users\\xribene\\Projects\\ScoreReduction\\pyproject.toml"
+    // ],
+}
