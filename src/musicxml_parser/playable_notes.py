@@ -164,6 +164,8 @@ def check_overlapped_notes(notes):
 
 
 def apply_rest_to_note(notes, rests):
+    if not notes:
+        return notes
     xml_positions = [note.note_duration.xml_position for note in notes]
     # concat continuous rests
     new_rests = []
@@ -350,7 +352,10 @@ def extract_and_apply_slurs(notes, ignore_slurs=False):
                     note.note_notations.is_slur_stop = True
                     stopSlurs.append(slur)
     if not ignore_slurs:
-        assert(len(startSlurs) == len(stopSlurs))
+        if len(startSlurs) != len(stopSlurs):
+            import warnings
+            warnings.warn(f"Slur start/stop count mismatch: {len(startSlurs)} starts vs {len(stopSlurs)} stops — ignoring slurs")
+            return notes
     # ensure slurs are sorted
     startSlurs.sort(key=lambda x: (x.xml_position))
     stopSlurs.sort(key=lambda x: (x.end_xml_position))
@@ -430,6 +435,8 @@ def extract_and_apply_slurs2(notes):
 
 
 def binary_index(alist, item):
+    if not alist:
+        return 0
     first = 0
     last = len(alist)-1
     midpoint = 0

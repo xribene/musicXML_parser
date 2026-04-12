@@ -45,6 +45,7 @@ class Note(object):
     self.id = -1
     self.parent_measure = parent_measure
     self.is_tab_note = False
+    self.is_muted = False
 
     self._parse()
 
@@ -105,6 +106,9 @@ class Note(object):
       elif child.tag == 'notehead':
         self.notehead_type = child.text
         self.notehead_color = child.attrib.get('color', None)
+      elif child.tag == 'play':
+        if child.find('mute') is not None:
+          self.is_muted = True
       else:
         # Ignore other tag types because they are not relevant to mxp.
         pass

@@ -47,6 +47,7 @@ class MusicXMLParserState(object):
         # Resets to 0 on every part. Affected by <forward> and <backup> elements
         self.time_position = 0
         self.xml_position = 0
+        self.lcm_divisions = constants.STANDARD_PPQ  # overridden by MusicXMLDocument
 
         # Default to a MIDI velocity of 64 (mf)
         self.velocity = 64
@@ -116,8 +117,27 @@ class MusicXMLDocument(object):
         self.ignore_drums = ignore_drums
         # ScoreParts indexed by id.
         self._score_parts = {}
-        self.midi_resolution = constants.STANDARD_PPQ
         self._state = MusicXMLParserState()
+
+        # Pre-scan for all <divisions> values and compute LCM.
+        # Used to normalize xml_position to integer ticks regardless
+        # of divisions changes between measures.
+        from math import gcd
+        divs_values = set()
+        for d in self._score.iter('divisions'):
+            try:
+                divs_values.add(int(d.text))
+            except (ValueError, TypeError):
+                pass
+        if divs_values:
+            lcm = 1
+            for d in divs_values:
+                lcm = lcm * d // gcd(lcm, d)
+            self.midi_resolution = lcm
+        else:
+            self.midi_resolution = constants.STANDARD_PPQ
+        self._state.lcm_divisions = self.midi_resolution
+
         # Total time in seconds
         self.total_time_secs = 0
         self.total_time_duration = 0
@@ -486,8 +506,8 @@ class MusicXMLDocument(object):
                         note.note_duration.duration / current_tempo
                     )
 
-    def get_measure_positions(self):
-        part = self.parts[0]
+    def get_measure_positions(self, part_index=0):
+        part = self.parts[part_index]
         measure_positions = []
 
         for measure in part.measures:
@@ -604,8 +624,8 @@ class MusicXMLDocument(object):
 
         return cleaned_direction
 
-    def get_beat_positions(self, in_measure_level=False):
-        piano = self.parts[0]
+    def get_beat_positions(self, in_measure_level=False, part_index=0):
+        piano = self.parts[part_index]
         num_measure = len(piano.measures)
         time_signatures = self.get_time_signatures()
         time_sig_position = [time.xml_position for time in time_signatures]
@@ -628,6 +648,11 @@ class MusicXMLDocument(object):
                 )
             else:
                 actual_measure_length = full_measure_length
+
+            # Skip zero-length measures (GP8 can emit empty/duplicate measures
+            # from repeat/coda markers or empty parts)
+            if actual_measure_length == 0 or full_measure_length == 0:
+                continue
 
             # if i +1 < num_measure:
             #     measure_length = piano.measures[i+1].start_xml_position - measure_start
@@ -675,7 +700,9 @@ class MusicXMLDocument(object):
                             piano.measures[i].start_xml_position
                             + j * inter_beat_interval
                         )
-                        if beat > beat_piece[-1]:
+                        if len(beat_piece) > 0 and beat > beat_piece[-1]:
+                            beat_piece.append(beat)
+                        elif len(beat_piece) == 0:
                             beat_piece.append(beat)
             else:
                 for j in range(num_beat_in_measure):

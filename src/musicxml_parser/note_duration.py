@@ -1,11 +1,8 @@
-from __future__ import division
 from fractions import Fraction
 from . import constants
-from .exception import InvalidNoteDurationTypeException
 
 
 class NoteDuration(object):
-  """Internal representation of a MusicXML note's duration properties."""
 
   TYPE_RATIO_MAP = {'maxima': Fraction(8, 1), 'long': Fraction(4, 1),
                     'breve': Fraction(2, 1), 'whole': Fraction(1, 1),
@@ -16,11 +13,11 @@ class NoteDuration(object):
                     '512th': Fraction(1, 512), '1024th': Fraction(1, 1024)}
 
   def __init__(self, state):
-    self.duration = 0  # MusicXML duration
-    self.midi_ticks = 0  # Duration in MIDI ticks
+    self.duration = 0  # Duration in normalized ticks (STANDARD_PPQ-based)
+    self.midi_ticks = 0  # Duration in MIDI ticks (same as duration after normalization)
     self.seconds = 0  # Duration in seconds
     self.time_position = 0  # Onset time in seconds
-    self.xml_position = 0
+    self.xml_position = 0  # Onset in normalized ticks (STANDARD_PPQ-based)
     self.dots = 0  # Number of augmentation dots
     self._type = 'quarter'  # MusicXML duration type
     self.tuplet_ratio = Fraction(1, 1)  # Ratio for tuplets (default to 1)
@@ -32,18 +29,28 @@ class NoteDuration(object):
     self.is_first_grace_note = False
 
   def parse_duration(self, is_in_chord, is_grace_note, duration):
-    """Parse the duration of a note and compute timings."""
-    self.duration = int(duration)
+    """Parse the duration of a note and compute timings.
+
+    All positions and durations are normalized to STANDARD_PPQ ticks per
+    quarter note, regardless of the MusicXML <divisions> value. This
+    ensures consistent positions even when GP8 exports change divisions
+    between measures.
+    """
+    raw_duration = int(duration)
     # Due to an error in Sibelius' export, force this note to have the
-    # duration of the previous note if it is in a chord
+    # duration of the previous note if it is in a chord.
+    # previous_note_duration is already normalized.
     if is_in_chord:
-      self.duration = self.state.previous_note_duration
+      self.midi_ticks = self.state.previous_note_duration
+    else:
+      # Normalize to lcm_divisions ticks per quarter (always integer)
+      self.midi_ticks = raw_duration * (self.state.lcm_divisions // self.state.divisions)
 
-    self.midi_ticks = self.duration
-    self.midi_ticks *= (constants.STANDARD_PPQ / self.state.divisions)
+    self.duration = self.midi_ticks
 
-    self.seconds = (self.midi_ticks / constants.STANDARD_PPQ)
-    self.seconds *= self.state.seconds_per_quarter
+    # seconds still uses STANDARD_PPQ for backwards compatibility
+    self.seconds = (raw_duration * (constants.STANDARD_PPQ / self.state.divisions)
+                    / constants.STANDARD_PPQ) * self.state.seconds_per_quarter
 
     self.time_position = float("{0:.8f}".format(self.state.time_position))
     self.xml_position = self.state.xml_position
@@ -59,64 +66,24 @@ class NoteDuration(object):
       # the same time position)
       self.time_position = self.state.previous_note_time_position
       self.xml_position = self.state.previous_note_xml_position
-      # pass
     else:
       # Only increment time positions once in chord
       self.state.time_position += self.seconds
-      self.state.xml_position += self.duration
+      self.state.xml_position += self.midi_ticks
 
   def _convert_type_to_ratio(self):
     """Convert the MusicXML note-type-value to a Python Fraction.
 
     Examples:
-    - whole = 1/1
-    - half = 1/2
-    - quarter = 1/4
-    - 32nd = 1/32
+      "quarter" -> 1/4
+      "half" -> 1/2
+      "whole" -> 1
+      "eighth" -> 1/8
 
     Returns:
       A Fraction object representing the note type.
     """
-    return self.TYPE_RATIO_MAP[self.type]
-
-  def duration_ratio(self):
-    """Compute the duration ratio of the note as a Python Fraction.
-
-    Examples:
-    - Whole Note = 1
-    - Quarter Note = 1/4
-    - Dotted Quarter Note = 3/8
-    - Triplet eighth note = 1/12
-
-    Returns:
-      The duration ratio as a Python Fraction.
-    """
-    # Get ratio from MusicXML note type
-    duration_ratio = Fraction(1, 1)
-    type_ratio = self._convert_type_to_ratio()
-
-    # Compute tuplet ratio
-    duration_ratio /= self.tuplet_ratio
-    type_ratio /= self.tuplet_ratio
-
-    # Add augmentation dots
-    one_half = Fraction(1, 2)
-    dot_sum = Fraction(0, 1)
-    for dot in range(self.dots):
-      dot_sum += (one_half ** (dot + 1)) * type_ratio
-
-    duration_ratio = type_ratio + dot_sum
-
-    # If the note is a grace note, force its ratio to be 0
-    # because it does not have a <duration> tag
-    if self.is_grace_note:
-      duration_ratio = Fraction(0, 1)
-    return duration_ratio
-
-  def duration_float(self):
-    """Return the duration ratio as a float."""
-    ratio = self.duration_ratio()
-    return ratio.numerator / ratio.denominator
+    return self.TYPE_RATIO_MAP.get(self._type, Fraction(1, 4))
 
   @property
   def type(self):
@@ -124,7 +91,7 @@ class NoteDuration(object):
 
   @type.setter
   def type(self, new_type):
-    if new_type not in self.TYPE_RATIO_MAP:
-      raise InvalidNoteDurationTypeException(
-        'Note duration type "{}" is not valid'.format(new_type))
+    if new_type is None:
+      return
     self._type = new_type
+

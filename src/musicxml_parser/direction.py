@@ -146,16 +146,17 @@ class Direction(object):
       xml_wedge: XML element with tag type 'wedge'.
     """
     # self.type = {'type':'words', 'content': xml_words.text.decode('utf-8')}
+    text = xml_words.text or ''
     if self.type['content'] is None:
-      self.type = {'type': 'words', 'content': xml_words.text}
+      self.type = {'type': 'words', 'content': text}
     else:
-      self.type['content'] += xml_words.text
+      self.type['content'] += text
 
   def _parse_octave_shift(self, xml_shift):
     """Parse the MusicXML <octave-shift> element.
 
     """
-    self.type = {'type': 'octave-shift', 'content': xml_shift.attrib['type'], 'size':  xml_shift.attrib['size']}
+    self.type = {'type': 'octave-shift', 'content': xml_shift.attrib['type'], 'size':  xml_shift.attrib.get('size', '8')}
 
   def _parse_metronome(self, xml_metronome):
     """Parse the MusicXML <metronome> element.

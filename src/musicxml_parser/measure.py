@@ -55,6 +55,7 @@ class Measure(object):
         # can be inserted at the beginning of the measure
         self.start_time_position = self.state.time_position
         self.start_xml_position = self.state.xml_position
+        self._max_xml_position = self.state.xml_position
 
         measureNumber = self.xml_measure.attrib["number"]
         # check if the measure has a width attribute
@@ -81,6 +82,27 @@ class Measure(object):
             self._parse2()
         else:
             self._parse()
+
+        # Fix xml_position: GP8 exports may not fill incomplete voices
+        # with rests, leaving the position counter mid-measure.
+        # Two cases:
+        # 1) Incomplete last voice: max_pos > current_pos → use max_pos
+        # 2) Empty measure (repeat/segno/coda): max_pos == start → advance
+        #    by expected measure length from time signature
+        if hasattr(self, '_max_xml_position'):
+            if self._max_xml_position > self.start_xml_position:
+                # Measure has content — use the longest voice's end
+                if self.state.xml_position < self._max_xml_position:
+                    self.state.xml_position = self._max_xml_position
+            else:
+                # Empty measure — advance by expected length
+                expected_length = (
+                    self.state.time_signature.numerator
+                    * self.state.lcm_divisions * 4
+                    // self.state.time_signature.denominator
+                )
+                self.state.xml_position = self.start_xml_position + expected_length
+
         # Update the time signature if a partial or pickup measure
         # self._fix_time_signature()
 
@@ -145,6 +167,8 @@ class Measure(object):
                     note.note_duration.time_position
                 )
                 self.state.previous_note_xml_position = note.note_duration.xml_position
+                if self.state.xml_position > self._max_xml_position:
+                    self._max_xml_position = self.state.xml_position
 
                 # Sum up the MusicXML durations in voice 1 of this measure
                 if note.voice == 1 and not note.is_in_chord:
@@ -372,6 +396,8 @@ class Measure(object):
                     note.note_duration.time_position
                 )
                 self.state.previous_note_xml_position = note.note_duration.xml_position
+                if self.state.xml_position > self._max_xml_position:
+                    self._max_xml_position = self.state.xml_position
 
                 # Sum up the MusicXML durations in voice 1 of this measure
                 if note.voice == 1 and not note.is_in_chord:
@@ -477,7 +503,11 @@ class Measure(object):
                 if current_clef["sign"] == "TAB":
                     self.parent_part.tab_staff_ind = staff_id
                     self.parent_part.has_tab = True
-                    self.parent_part.num_strings = int(child.find("staff-lines").text)
+                    staff_lines_el = child.find("staff-lines")
+                    if staff_lines_el is None:
+                        # GP8 can emit <staff-details> without <staff-lines>
+                        continue
+                    self.parent_part.num_strings = int(staff_lines_el.text)
                     xml_staff_tuning = child.findall("staff-tuning")
                     # If <staff-type>alternate</staff-type> exists in
                     if child.find("staff-type") is not None:
@@ -599,9 +629,10 @@ class Measure(object):
         xml_duration = xml_backup.find("duration")
         backup_duration = int(xml_duration.text)
         midi_ticks = backup_duration * (constants.STANDARD_PPQ / self.state.divisions)
+        normalized = backup_duration * (self.state.lcm_divisions // self.state.divisions)
         seconds = (midi_ticks / constants.STANDARD_PPQ) * self.state.seconds_per_quarter
         self.state.time_position -= seconds
-        self.state.xml_position -= backup_duration
+        self.state.xml_position -= normalized
 
         # self.guitarMeasure.append(copy.deepcopy(xml_backup))
         # self.guitarMeasureTabElements.append(copy.deepcopy(xml_backup))
@@ -650,9 +681,10 @@ class Measure(object):
         xml_duration = xml_forward.find("duration")
         forward_duration = int(xml_duration.text)
         midi_ticks = forward_duration * (constants.STANDARD_PPQ / self.state.divisions)
+        normalized = forward_duration * (self.state.lcm_divisions // self.state.divisions)
         seconds = (midi_ticks / constants.STANDARD_PPQ) * self.state.seconds_per_quarter
         self.state.time_position += seconds
-        self.state.xml_position += forward_duration
+        self.state.xml_position += normalized
 
         # self.guitarMeasure.append(copy.deepcopy(xml_forward))
         # self.guitarMeasureTabElements.append(copy.deepcopy(xml_forward))
